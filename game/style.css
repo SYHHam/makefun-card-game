@@ -1,0 +1,20 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #1a1510;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+canvas {
+  width: min(100vw, 177.78vh);
+  height: min(100vh, 56.25vw);
+  display: block;
+  cursor: pointer;
+}

@@ -1,0 +1,290 @@
+// ui.js: UI rendering. Buttons, candle totals, intent indicator, screens.
+
+import { SUITS } from './card.js';
+import { RITUALS, ritualProgress } from './ritual.js';
+import { LAYOUT } from './table.js';
+import { drawFlame, drawSuitSymbol, renderCard, renderCardBack, renderHand, renderTable } from './render.js';
+import { getIntent, aiNearRitual } from './player.js';
+
+const TEXT = '#f5f0e6';
+const GOLD = '#d4a84b';
+const DANGER = '#d94e4e';
+const GLOW = '#4a9eff';
+const MUTED = 'rgba(245, 240, 230, 0.6)';
+
+export function drawButton(ctx, btn) {
+  ctx.save();
+  roundRectPath(ctx, btn.x, btn.y, btn.w, btn.h, 8);
+  ctx.fillStyle = btn.enabled === false ? '#3d3225' : (btn.hot ? '#8a6a2f' : '#2d2418');
+  ctx.fill();
+  ctx.strokeStyle = btn.enabled === false ? '#555' : GOLD;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = btn.enabled === false ? '#999' : TEXT;
+  ctx.font = 'bold 18px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
+  ctx.restore();
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export function drawCandles(ctx, x, y, count, t, label) {
+  ctx.save();
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 24px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label + ' ' + count + ' CANDLES', x, y);
+  const textW = ctx.measureText(label + ' ' + count + ' CANDLES').width;
+  const startX = x + textW + 16;
+  const shown = Math.min(count, 12);
+  for (let i = 0; i < shown; i++) {
+    drawFlame(ctx, startX + i * 20 + 8, y - 2, 11, t + i * 40);
+  }
+  ctx.restore();
+}
+
+export function drawIntent(ctx, x, y, intent) {
+  const color = intent === 'DESPERATE' ? DANGER : intent === 'DISRUPTING' ? '#ffaa33' : GLOW;
+  ctx.save();
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 20px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('INTENT: ', x, y);
+  const w = ctx.measureText('INTENT: ').width;
+  ctx.fillStyle = color;
+  ctx.fillText(intent, x + w, y);
+  ctx.restore();
+}
+
+function drawRitualProgress(ctx, x, y, player) {
+  ctx.save();
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 18px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RITUALS ' + player.ritualsCompleted + '/3', x, y);
+  let cx = x + 140;
+  for (const ritual of RITUALS) {
+    const p = ritualProgress(player.ritual, ritual);
+    const done = player.completed.includes(ritual.key);
+    ctx.beginPath();
+    ctx.arc(cx, y - 8, 16, 0, Math.PI * 2);
+    ctx.fillStyle = done ? GOLD : '#2d2418';
+    ctx.fill();
+    ctx.strokeStyle = done ? GOLD : SUITS[ritual.suit].color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    drawSuitSymbol(ctx, ritual.suit, cx, y - 8, 18);
+    ctx.fillStyle = done ? GOLD : TEXT;
+    ctx.font = 'bold 13px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(ritual.name + ' ' + p.count + '/' + p.need, cx, y + 22);
+    cx += 75;
+  }
+  ctx.restore();
+}
+
+function drawHook(ctx) {
+  ctx.save();
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = TEXT;
+  ctx.font = '14px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(
+    'Two occultists race to complete three rituals before their candles burn out, each card usable for progress or sabotage.',
+    LAYOUT.hook.x, LAYOUT.hook.y);
+  ctx.restore();
+}
+
+export function drawUI(ctx, game, t) {
+  const L = LAYOUT;
+  ctx.save();
+  // Title bar.
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 32px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('RITUAL & RUIN', L.title.x, L.title.y + 24);
+  ctx.font = 'bold 18px Georgia, serif';
+  ctx.textAlign = 'center';
+  const turnText = game.screen === 'playing'
+    ? (game.turn === 'player' ? 'YOUR TURN' : 'OPPONENT THINKING...')
+    : '';
+  ctx.fillStyle = game.turn === 'player' ? GOLD : MUTED;
+  ctx.fillText(turnText, L.turnLabel.x, L.turnLabel.y + 20);
+
+  // Opponent row.
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 20px Georgia, serif';
+  ctx.fillStyle = TEXT;
+  ctx.fillText('OPPONENT', L.oppLabel.x, L.oppLabel.y);
+  drawCandles(ctx, L.oppCandles.x, L.oppCandles.y + 12, game.ai.candles, t, '');
+  drawIntent(ctx, L.intent.x, L.intent.y, getIntent(game.ai, game));
+  const near = aiNearRitual(game.ai);
+  if (near) {
+    ctx.fillStyle = DANGER;
+    ctx.font = 'bold 18px Georgia, serif';
+    ctx.fillText('Warning: ' + near.name + ' ritual almost ready!', L.warning.x, L.warning.y);
+  }
+  // Opponent ritual area, face up.
+  ctx.fillStyle = MUTED;
+  ctx.font = '16px Georgia, serif';
+  ctx.fillText('RITUAL AREA', L.oppRitual.x, L.oppRitual.y - 8);
+  game.ai.ritual.forEach((card, i) => {
+    const p = { x: L.oppRitual.x + i * (L.oppRitual.cardW + L.oppRitual.gap), y: L.oppRitual.y };
+    renderCard(ctx, card, p.x, p.y, L.oppRitual.cardW, L.oppRitual.cardH);
+  });
+  // Opponent hand, face down.
+  ctx.fillText('HAND', L.oppHand.x, L.oppRitual.y - 8);
+  game.ai.hand.forEach((card, i) => {
+    renderCardBack(ctx, L.oppHand.x + i * (L.oppHand.cardW + L.oppHand.gap), L.oppRitual.y, L.oppHand.cardW, L.oppHand.cardH);
+  });
+
+  // Player ritual area.
+  ctx.fillStyle = MUTED;
+  ctx.font = '16px Georgia, serif';
+  ctx.fillText('YOUR RITUAL', L.playerRitualLabel.x, L.playerRitualLabel.y);
+  game.player.ritual.forEach((card, i) => {
+    const p = { x: L.playerRitual.x + i * (L.playerRitual.cardW + L.playerRitual.gap), y: L.playerRitual.y };
+    renderCard(ctx, card, p.x, p.y, L.playerRitual.cardW, L.playerRitual.cardH);
+  });
+
+  // Message line.
+  ctx.fillStyle = TEXT;
+  ctx.font = 'italic 18px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(game.message, L.message.x, L.message.y);
+
+  // Player hand.
+  renderHand(ctx, game.player.hand, game.selected, game.table);
+
+  // Bottom bar: candles, ritual progress, action buttons.
+  drawCandles(ctx, L.playerCandles.x, L.playerCandles.y, game.player.candles, t, 'YOU:');
+  drawRitualProgress(ctx, L.progress.x, L.progress.y, game.player);
+  const canPlay = game.screen === 'playing' && game.turn === 'player' && game.selected !== null;
+  drawButton(ctx, { ...L.ritualButton, label: 'PLAY TO RITUAL  (R)', enabled: canPlay });
+  drawButton(ctx, { ...L.spellButton, label: 'CAST SPELL  (S)', enabled: canPlay });
+  drawHook(ctx);
+  ctx.restore();
+}
+
+export function drawTitle(ctx, game, t) {
+  const L = LAYOUT;
+  ctx.fillStyle = '#1a1510';
+  ctx.fillRect(0, 0, L.width, L.height);
+  // Chamber glow and candles.
+  const grad = ctx.createRadialGradient(640, 300, 40, 640, 300, 520);
+  grad.addColorStop(0, 'rgba(255, 170, 51, 0.16)');
+  grad.addColorStop(1, 'rgba(26, 21, 16, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, L.width, L.height);
+  for (let i = 0; i < 5; i++) {
+    const x = 300 + i * 170;
+    ctx.fillStyle = '#f5e6c8';
+    ctx.fillRect(x - 8, 560, 16, 70);
+    drawFlame(ctx, x, 548, 16, t + i * 120);
+  }
+  ctx.fillStyle = GOLD;
+  ctx.font = 'bold 84px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('RITUAL & RUIN', 640, 220);
+  ctx.fillStyle = TEXT;
+  ctx.font = 'italic 28px Georgia, serif';
+  ctx.fillText('A Duel of Occultists', 640, 268);
+  ctx.fillStyle = MUTED;
+  ctx.font = '18px Georgia, serif';
+  ctx.fillText('Complete three rituals before your candles burn out. Every card is a component or a spell.', 640, 320);
+  drawButton(ctx, { x: 490, y: 400, w: 300, h: 56, label: 'START GAME' });
+  drawButton(ctx, { x: 490, y: 476, w: 300, h: 56, label: 'HOW TO PLAY' });
+  ctx.fillStyle = MUTED;
+  ctx.font = '14px Georgia, serif';
+  ctx.fillText('Click a card, then PLAY TO RITUAL or CAST SPELL. Keys: 1-7 select, R ritual, S spell.', 640, 662);
+}
+
+export function drawHelp(ctx) {
+  const L = LAYOUT;
+  ctx.fillStyle = '#1a1510';
+  ctx.fillRect(0, 0, L.width, L.height);
+  ctx.fillStyle = GOLD;
+  ctx.font = 'bold 44px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('HOW TO PLAY', 640, 90);
+  const lines = [
+    'Two occultists duel in a candlelit chamber. Each has 9 candles.',
+    'Each turn you draw a card, then play exactly one card:',
+    '',
+    'PLAY TO RITUAL: place the card in your ritual area (max 5).',
+    '  Binding: 3+ Blood cards totalling 15 or more. Gain 2 candles.',
+    '  Warding: 3+ Bone cards totalling 12 or more. Opponent loses 2 candles.',
+    '  Veil: 3+ Shadow cards totalling 10 or more. Steal 1 card from the opponent.',
+    '',
+    'CAST SPELL: discard the card for its effect instead.',
+    '  Blood Rite: snuff 1 opponent candle.  Bone Ward: gain 1 candle.',
+    '  Shadow Theft: shatter 1 opponent ritual card, or force a discard.',
+    '',
+    'Win by completing 3 rituals, or by snuffing all the opponent candles.',
+    'Lose if your own candles reach 0.',
+  ];
+  ctx.fillStyle = TEXT;
+  ctx.font = '19px Georgia, serif';
+  lines.forEach((line, i) => ctx.fillText(line, 640, 150 + i * 32));
+  drawButton(ctx, { x: 540, y: 620, w: 200, h: 48, label: 'BACK' });
+}
+
+export function drawEnd(ctx, game, won) {
+  const L = LAYOUT;
+  ctx.fillStyle = '#1a1510';
+  ctx.fillRect(0, 0, L.width, L.height);
+  ctx.textAlign = 'center';
+  if (won) {
+    ctx.fillStyle = GOLD;
+    ctx.font = 'bold 72px Georgia, serif';
+    ctx.fillText('RITUAL COMPLETE', 640, 180);
+    ctx.fillStyle = TEXT;
+    ctx.font = 'italic 26px Georgia, serif';
+    ctx.fillText('Three rituals sealed. The chamber is yours.', 640, 232);
+  } else {
+    ctx.fillStyle = '#9a938a';
+    ctx.font = 'bold 60px Georgia, serif';
+    ctx.fillText('YOUR CANDLES HAVE DIED', 640, 180);
+    ctx.fillStyle = TEXT;
+    ctx.font = 'italic 26px Georgia, serif';
+    ctx.fillText('The dark takes the circle. The rival occultist prevails.', 640, 232);
+  }
+  // Ritual icons and candle rows.
+  let cx = 640 - 110;
+  for (const ritual of RITUALS) {
+    const done = (won ? game.player : game.ai).completed.includes(ritual.key);
+    ctx.beginPath();
+    ctx.arc(cx, 330, 34, 0, Math.PI * 2);
+    ctx.fillStyle = done ? GOLD : '#2d2418';
+    ctx.fill();
+    ctx.strokeStyle = done ? GOLD : '#555';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    drawSuitSymbol(ctx, ritual.suit, cx, 330, 36);
+    ctx.fillStyle = done ? GOLD : MUTED;
+    ctx.font = 'bold 18px Georgia, serif';
+    ctx.fillText(ritual.name, cx, 392);
+    cx += 110;
+  }
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 22px Georgia, serif';
+  ctx.fillText('YOU: ' + game.player.candles + ' CANDLES      OPPONENT: ' + game.ai.candles + ' CANDLES', 640, 460);
+  drawButton(ctx, { x: 490, y: 520, w: 300, h: 56, label: won ? 'PLAY AGAIN' : 'TRY AGAIN' });
+}
+
+export { renderTable };

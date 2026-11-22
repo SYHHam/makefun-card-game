@@ -1,0 +1,209 @@
+// render.js: Canvas drawing. Card faces, suit symbols, table, hands.
+
+import { SUITS, getSuitSymbol } from './card.js';
+import { LAYOUT } from './table.js';
+import { drawParticles } from './animator.js';
+
+const PALETTE = {
+  felt: '#1a1510',
+  border: '#2d2418',
+  cardBack: '#3d3225',
+  cardFace: '#f5f0e6',
+  flame: '#ffaa33',
+  wax: '#f5e6c8',
+  danger: '#d94e4e',
+  gold: '#d4a84b',
+  text: '#f5f0e6',
+  textDark: '#1a1510',
+  glow: '#4a9eff',
+};
+
+export function clearCanvas(ctx) {
+  ctx.clearRect(0, 0, LAYOUT.width, LAYOUT.height);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Draw one suit symbol centered at (cx, cy) with the given size.
+export function drawSuitSymbol(ctx, suit, cx, cy, size) {
+  const s = SUITS[suit];
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = s.color;
+  ctx.strokeStyle = s.dark;
+  ctx.lineWidth = Math.max(2, size * 0.08);
+  if (suit === 'blood') {
+    // Teardrop, pointed at the bottom.
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.5);
+    ctx.bezierCurveTo(size * 0.42, -size * 0.05, size * 0.38, size * 0.32, 0, size * 0.5);
+    ctx.bezierCurveTo(-size * 0.38, size * 0.32, -size * 0.42, -size * 0.05, 0, -size * 0.5);
+    ctx.fill();
+    ctx.stroke();
+  } else if (suit === 'bone') {
+    // Skull: round cranium, jaw, hollow eyes.
+    ctx.beginPath();
+    ctx.arc(0, -size * 0.08, size * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillRect(-size * 0.2, size * 0.14, size * 0.4, size * 0.24);
+    ctx.strokeRect(-size * 0.2, size * 0.14, size * 0.4, size * 0.24);
+    ctx.fillStyle = PALETTE.textDark;
+    ctx.beginPath();
+    ctx.arc(-size * 0.13, -size * 0.1, size * 0.09, 0, Math.PI * 2);
+    ctx.arc(size * 0.13, -size * 0.1, size * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Shadow wisp: spiral curl.
+    ctx.beginPath();
+    for (let a = 0; a <= Math.PI * 4.4; a += 0.25) {
+      const r = size * 0.42 * (1 - a / (Math.PI * 5.2));
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r - size * 0.05;
+      if (a === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.lineWidth = Math.max(3, size * 0.14);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = s.color;
+    ctx.stroke();
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    ctx.arc(0, -size * 0.42, size * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+export function drawFlame(ctx, x, y, size, t) {
+  const flick = 1 + Math.sin(t * 0.006 + x) * 0.06;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(flick, flick);
+  ctx.fillStyle = PALETTE.flame;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.bezierCurveTo(size * 0.7, -size * 0.2, size * 0.55, size * 0.5, 0, size * 0.6);
+  ctx.bezierCurveTo(-size * 0.55, size * 0.5, -size * 0.7, -size * 0.2, 0, -size);
+  ctx.fill();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.45);
+  ctx.bezierCurveTo(size * 0.35, 0, size * 0.28, size * 0.35, 0, size * 0.42);
+  ctx.bezierCurveTo(-size * 0.28, size * 0.35, -size * 0.35, 0, 0, -size * 0.45);
+  ctx.fill();
+  ctx.restore();
+}
+
+export function renderCard(ctx, card, x, y, w, h, opts) {
+  const o = opts || {};
+  const s = SUITS[card.suit];
+  ctx.save();
+  if (o.selected) {
+    ctx.shadowColor = PALETTE.glow;
+    ctx.shadowBlur = 18;
+  }
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = PALETTE.cardFace;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = o.selected ? PALETTE.glow : PALETTE.border;
+  ctx.lineWidth = o.selected ? 3 : 2;
+  ctx.stroke();
+  ctx.clip();
+
+  const ink = card.suit === 'bone' ? s.dark : s.color;
+  // Big value, top left and center.
+  ctx.fillStyle = ink;
+  ctx.font = 'bold ' + Math.round(h * 0.32) + 'px Georgia, serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(String(card.value), x + 8, y + 4);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold ' + Math.round(h * 0.34) + 'px Georgia, serif';
+  ctx.fillText(String(card.value), x + w / 2, y + h * 0.42);
+  // Suit symbol, upper middle.
+  drawSuitSymbol(ctx, card.suit, x + w / 2, y + h * 0.26, Math.min(w, h) * 0.3);
+  // Suit label at the bottom.
+  ctx.fillStyle = ink;
+  ctx.font = 'bold ' + Math.round(h * 0.09) + 'px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(s.label, x + w / 2, y + h - 10);
+  ctx.restore();
+}
+
+export function renderCardBack(ctx, x, y, w, h) {
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = PALETTE.cardBack;
+  ctx.fill();
+  ctx.strokeStyle = PALETTE.gold;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  roundRect(ctx, x + 6, y + 6, w - 12, h - 12, 5);
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = PALETTE.gold;
+  ctx.font = 'bold ' + Math.round(h * 0.22) + 'px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('R', x + w / 2, y + h / 2);
+}
+
+export function renderHand(ctx, hand, selected, table) {
+  for (let i = 0; i < hand.length; i++) {
+    const pos = table.handCardPos(i, hand.length);
+    const card = hand[i];
+    const lift = selected === i ? -18 : 0;
+    const p = card._anim || pos;
+    renderCard(ctx, card, p.x, p.y + lift, pos.w, pos.h, { selected: selected === i });
+  }
+}
+
+export function renderTable(ctx, game, t) {
+  const L = LAYOUT;
+  // Felt background with a vignette border.
+  ctx.fillStyle = PALETTE.felt;
+  ctx.fillRect(0, 0, L.width, L.height);
+  ctx.strokeStyle = PALETTE.border;
+  ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, L.width - 10, L.height - 10);
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.25)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(16, 16, L.width - 32, L.height - 32);
+
+  // Deck pile.
+  renderCardBack(ctx, L.deck.x, L.deck.y, L.deck.w, L.deck.h);
+  ctx.fillStyle = PALETTE.text;
+  ctx.font = 'bold 20px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('DECK ' + game.deck.count, L.deck.x + L.deck.w / 2, L.deck.y + L.deck.h + 24);
+
+  // Discard pile.
+  const top = game.deck.discardPile[game.deck.discardPile.length - 1];
+  if (top) {
+    renderCard(ctx, top, L.discard.x, L.discard.y, L.discard.w, L.discard.h);
+  } else {
+    roundRect(ctx, L.discard.x, L.discard.y, L.discard.w, L.discard.h, 8);
+    ctx.strokeStyle = 'rgba(245, 240, 230, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.fillStyle = PALETTE.text;
+  ctx.font = 'bold 20px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('DISCARD ' + game.deck.discardCount, L.discard.x + L.discard.w / 2, L.discard.y + L.discard.h + 24);
+
+  drawParticles(ctx);
+}

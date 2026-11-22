@@ -17,8 +17,10 @@ const shotsDir = join(here, 'screenshots');
 if (!existsSync(gameDir)) throw new Error('main.ts: game/ is missing beside main.ts');
 if (!existsSync(shotsDir)) throw new Error('main.ts: screenshots/ is missing beside main.ts');
 
-rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
+for (const entry of readdirSync(outDir)) {
+  rmSync(join(outDir, entry), { recursive: true, force: true });
+}
 cpSync(gameDir, join(outDir, 'game'), { recursive: true });
 cpSync(shotsDir, join(outDir, 'screenshots'), { recursive: true });
 

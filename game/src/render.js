@@ -34,10 +34,29 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // The altar: two chalk circles and tick marks around the deck and discard,
 // so the empty middle of the table becomes the ritual circle itself.
+// The rings are clipped to the bare table with the even-odd rule: every
+// frame, card, label and line of text is cut out of the clip region, so a
+// ring never crosses a border or a word. The circle reads as painted on the
+// table underneath the game pieces instead of cutting through them.
 function drawAltar(ctx) {
   const cx = 640;
   const cy = 328;
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, LAYOUT.width, LAYOUT.height);
+  const holes = [
+    [622, 38, 480, 150],   // opponent ritual frame
+    [162, 250, 480, 150],  // player ritual frame
+    [554, 262, 92, 132],   // deck pile
+    [674, 262, 92, 132],   // discard pile
+    [538, 388, 124, 28],   // DECK label
+    [644, 388, 152, 28],   // DISCARD label
+    [540, 230, 200, 26],   // YOUR TURN / OPPONENT THINKING...
+    [320, 412, 640, 32],   // message line
+    [163, 444, 645, 184],  // player hand
+  ];
+  for (const [x, y, w, h] of holes) ctx.rect(x, y, w, h);
+  ctx.clip('evenodd');
   ctx.strokeStyle = 'rgba(212, 168, 75, 0.4)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -63,15 +82,6 @@ function drawAltar(ctx) {
     ctx.lineTo(x2, y2);
     ctx.stroke();
   }
-  // Small diamond at the top of the ring.
-  ctx.fillStyle = 'rgba(212, 168, 75, 0.6)';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy - 180);
-  ctx.lineTo(cx + 6, cy - 172);
-  ctx.lineTo(cx, cy - 164);
-  ctx.lineTo(cx - 6, cy - 172);
-  ctx.closePath();
-  ctx.fill();
   ctx.restore();
 }
 

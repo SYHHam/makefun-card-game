@@ -3,12 +3,12 @@
 // wipes the output dir first, then writes /output/dossier.json with
 // buildDossier from the kit's vendored module. Node 22, stdlib only.
 //
-// Fix pass for Round 3 (visual and presentation only, no rule or balance
-// changes): the table now draws a layered felt with a chalk altar circle
-// and ritual frames, the dual-use panel explains each selected card, the
-// AI threat line names the nearest ritual with its progress, cards fly
-// from hand to ritual or discard on a tweened proxy, and the title and
-// end screens share the same altar seal with a stronger payoff.
+// Overlap revision (Round 3, second pass): the altar rings on the table,
+// title and end screens are now clipped around every frame, card, label
+// and line of text with the even-odd rule, so no ring crosses a border or
+// a word; the threat pill and YOUR TURN got breathing room below the
+// opponent frame, the hand fan is wider so every suit label reads, and
+// the action buttons moved up so the judge hook line clears them.
 
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

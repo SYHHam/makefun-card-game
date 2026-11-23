@@ -251,7 +251,21 @@ export function drawTitle(ctx, game, t) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, L.width, L.height);
   // Faint altar ring behind the title, the same seal as on the table.
+  // Clipped around the title, the taglines, the seals and the buttons, so
+  // no ring ever crosses a word or a button edge.
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, L.width, L.height);
+  const titleHoles = [
+    [295, 152, 690, 76],  // RITUAL & RUIN
+    [470, 238, 340, 36],  // A Duel of Occultists
+    [370, 298, 540, 28],  // 3 rituals, dual-use cards, extinguish the rival
+    [488, 316, 304, 64],  // the three suit seals
+    [484, 394, 312, 68],  // START GAME
+    [484, 470, 312, 68],  // HOW TO PLAY
+  ];
+  for (const [x, y, w, h] of titleHoles) ctx.rect(x, y, w, h);
+  ctx.clip('evenodd');
   ctx.strokeStyle = 'rgba(212, 168, 75, 0.16)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -353,7 +367,22 @@ export function drawEnd(ctx, game, won) {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, L.width, L.height);
   }
+  // The same faint altar ring as the table and title, clipped around the
+  // headline, the flavour line, the seals and the candle totals, so the
+  // ring never crosses a word.
   ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, L.width, L.height);
+  const endHoles = [
+    [430, 108, 420, 68],  // YOU WIN / YOU LOSE
+    [430, 190, 420, 38],  // RITUAL COMPLETE / YOUR CANDLES HAVE DIED
+    [320, 240, 640, 30],  // flavour line
+    [458, 298, 364, 128], // ritual seals and their names
+    [370, 456, 540, 30],  // candle totals
+    [484, 514, 312, 68],  // PLAY AGAIN / TRY AGAIN
+  ];
+  for (const [x, y, w, h] of endHoles) ctx.rect(x, y, w, h);
+  ctx.clip('evenodd');
   ctx.strokeStyle = won ? 'rgba(212, 168, 75, 0.2)' : 'rgba(154, 147, 138, 0.16)';
   ctx.lineWidth = 2;
   ctx.beginPath();

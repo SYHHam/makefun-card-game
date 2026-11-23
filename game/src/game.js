@@ -5,11 +5,11 @@ import { Player, AIPlayer, START_HAND } from './player.js';
 import { checkRitualCompletion, RITUALS } from './ritual.js';
 import { castSpell } from './spell.js';
 import { createCard } from './card.js';
-import { Table } from './table.js';
-import { createParticles } from './animator.js';
+import { Table, LAYOUT, dealAnimation } from './table.js';
+import { createParticles, tween } from './animator.js';
 import { playSound, setMuted, isMuted } from './audio.js';
 
-export const HOOK_LINE = 'Two occultists race to complete three rituals before their candles burn out, each card usable for progress or sabotage.';
+export const HOOK_LINE = 'Every card is a choice: feed a ritual, mend your flame, or break your rival\'s. Read the omen before it\'s too late.';
 
 export function createGame() {
   return {
@@ -24,6 +24,9 @@ export function createGame() {
     shake: 0,
     flash: null,
     aiTimer: null,
+    // Card currently flying between two spots. Presentation only: the game
+    // state underneath is already final while the proxy slides.
+    fly: null,
   };
 }
 
@@ -35,6 +38,7 @@ export function initGame(game) {
   game.selected = null;
   game.shake = 0;
   game.flash = null;
+  game.fly = null;
   if (game.aiTimer) {
     clearTimeout(game.aiTimer);
     game.aiTimer = null;
@@ -43,6 +47,11 @@ export function initGame(game) {
     game.player.drawCard(game.deck);
     game.ai.drawCard(game.deck);
   }
+  // Opening deal: each player card slides from the deck to its hand slot.
+  game.player.hand.forEach((card, i) => {
+    const to = game.table.handCardPos(i, game.player.hand.length);
+    dealAnimation(card, { x: LAYOUT.deck.x, y: LAYOUT.deck.y }, to, { tween });
+  });
   game.turn = Math.random() < 0.5 ? 'player' : 'ai';
   game.message = game.turn === 'player'
     ? 'Your turn. Draw a card, then play one.'
@@ -62,6 +71,11 @@ export function startTurn(game) {
   game.turn = 'player';
   const drawn = game.player.drawCard(game.deck);
   game.player.trimHand(game.deck);
+  if (drawn) {
+    // The drawn card slides from the deck to its new hand slot.
+    const to = game.table.handCardPos(game.player.hand.length - 1, game.player.hand.length);
+    dealAnimation(drawn, { x: LAYOUT.deck.x, y: LAYOUT.deck.y }, to, { tween });
+  }
   game.message = drawn
     ? 'Your turn. You drew a ' + drawn.suit + ' ' + drawn.value + '. Play one card.'
     : 'Your turn. The deck is empty. Play one card.';
@@ -91,8 +105,11 @@ function aiTakeTurn(game) {
     return;
   }
   if (choice.action === 'ritual') {
+    const from = { x: LAYOUT.oppHand.x, y: LAYOUT.oppRitual.y, w: LAYOUT.oppHand.cardW, h: LAYOUT.oppHand.cardH };
+    const to = game.table.oppRitualCardPos(ai.ritual.length);
     ai.removeFromHand(choice.card);
     ai.ritual.push(choice.card);
+    flyCard(game, choice.card, from, to);
     playSound('ritual');
     game.message = 'Opponent places a ' + choice.card.suit + ' ' + choice.card.value + ' in their ritual.';
     resolveRituals(game, ai, game.player);
@@ -102,6 +119,20 @@ function aiTakeTurn(game) {
   }
   if (checkWin(game)) return;
   startTurn(game);
+}
+
+// Slide one card from a hand position to a target slot as a flying proxy.
+// The card is already in its new place in the state; the proxy is only
+// drawn, and the card itself stays hidden until the proxy lands.
+function flyCard(game, card, from, to) {
+  card._flying = true;
+  game.fly = { card, x: from.x, y: from.y, w: from.w, h: from.h };
+  tween(game.fly, 'x', from.x, to.x, 350);
+  tween(game.fly, 'y', from.y, to.y, 350, () => {
+    game.fly = null;
+    card._flying = false;
+    createParticles(to.x + to.w / 2, to.y + to.h / 2, '#d4a84b', 10);
+  });
 }
 
 // After a card is placed, complete any ritual it finishes.
@@ -116,7 +147,15 @@ export function resolveRituals(game, caster, target) {
     caster.ritualsCompleted++;
     caster.completed.push(ritual.key);
     applyRitualEffect(game, ritual, caster, target);
-    createParticles(640, 300, '#d4a84b', 40);
+    // The burst lands where the ritual actually completed, not at one
+    // fixed point on the table.
+    const px = caster === game.player
+      ? LAYOUT.playerRitual.x + 214
+      : LAYOUT.oppRitual.x + 222;
+    const py = caster === game.player
+      ? LAYOUT.playerRitual.y + 57
+      : LAYOUT.oppRitual.y + 57;
+    createParticles(px, py, '#d4a84b', 40);
     playSound('complete');
     game.message = caster.name + (caster.name === 'You' ? ' complete' : ' completes') +
       ' the ' + ritual.name + ' ritual. ' + ritual.blurb;
@@ -150,8 +189,11 @@ export function playSelectedToRitual(game) {
     return false;
   }
   const card = game.player.hand[game.selected];
+  const from = game.table.handCardPos(game.selected, game.player.hand.length);
+  const to = game.table.ritualCardPos(game.player.ritual.length);
   game.player.removeFromHand(card);
   game.player.ritual.push(card);
+  flyCard(game, card, from, to);
   playSound('ritual');
   game.message = 'You place a ' + card.suit + ' ' + card.value + ' in your ritual.';
   resolveRituals(game, game.player, game.ai);
@@ -167,8 +209,11 @@ export function castSelectedSpell(game) {
     return false;
   }
   const card = game.player.hand[game.selected];
+  const from = game.table.handCardPos(game.selected, game.player.hand.length);
+  const to = { x: LAYOUT.discard.x, y: LAYOUT.discard.y, w: LAYOUT.discard.w, h: LAYOUT.discard.h };
   playSound('spell');
   game.message = castSpell(card, game.player, game.ai, game);
+  flyCard(game, card, from, to);
   if (checkWin(game)) return true;
   endTurn(game);
   return true;
@@ -180,12 +225,14 @@ export function checkWin(game) {
   if (p.ritualsCompleted >= 3 || a.candles <= 0) {
     game.screen = 'win';
     game.message = 'Ritual complete. You win.';
+    createParticles(640, 320, '#d4a84b', 60);
     playSound('win');
     return true;
   }
   if (a.ritualsCompleted >= 3 || p.candles <= 0) {
     game.screen = 'loss';
     game.message = 'Your candles have died.';
+    createParticles(640, 320, '#8a7a6a', 40);
     playSound('loss');
     return true;
   }

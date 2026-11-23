@@ -32,6 +32,77 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// The altar: two chalk circles and tick marks around the deck and discard,
+// so the empty middle of the table becomes the ritual circle itself.
+function drawAltar(ctx) {
+  const cx = 640;
+  const cy = 328;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 168, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.22)';
+  ctx.setLineDash([4, 10]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, 142, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Tick marks on the outer ring, one for each candle of a full flame.
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.5)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const x1 = cx + Math.cos(a) * 158;
+    const y1 = cy + Math.sin(a) * 158;
+    const x2 = cx + Math.cos(a) * 168;
+    const y2 = cy + Math.sin(a) * 168;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  // Small diamond at the top of the ring.
+  ctx.fillStyle = 'rgba(212, 168, 75, 0.6)';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 180);
+  ctx.lineTo(cx + 6, cy - 172);
+  ctx.lineTo(cx, cy - 164);
+  ctx.lineTo(cx - 6, cy - 172);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// Thin gold frames behind the two ritual areas, so each zone reads as one
+// place on the table instead of loose cards on felt.
+function drawRitualFrames(ctx) {
+  const L = LAYOUT;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(212, 168, 75, 0.28)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, L.playerRitual.x - 12, L.playerRitual.y - 12,
+    5 * L.playerRitual.cardW + 4 * L.playerRitual.gap + 24, L.playerRitual.cardH + 24, 10);
+  ctx.stroke();
+  roundRect(ctx, L.oppRitual.x - 12, L.oppRitual.y - 12,
+    5 * L.oppRitual.cardW + 4 * L.oppRitual.gap + 24, L.oppRitual.cardH + 24, 10);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// A card mid-flight: drawn by the UI on top of the table while its tween runs.
+export function drawFlyingCard(ctx, game) {
+  const fly = game.fly;
+  if (!fly) return;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 6;
+  renderCard(ctx, fly.card, fly.x, fly.y, fly.w, fly.h);
+  ctx.restore();
+}
+
 // Draw one suit symbol centered at (cx, cy) with the given size.
 export function drawSuitSymbol(ctx, suit, cx, cy, size) {
   const s = SUITS[suit];
@@ -130,11 +201,11 @@ export function renderCard(ctx, card, x, y, w, h, opts) {
   ctx.textAlign = 'center';
   ctx.font = 'bold ' + Math.round(h * 0.34) + 'px Georgia, serif';
   ctx.fillText(String(card.value), x + w / 2, y + h * 0.42);
-  // Suit symbol, upper middle.
-  drawSuitSymbol(ctx, card.suit, x + w / 2, y + h * 0.26, Math.min(w, h) * 0.3);
+  // Suit symbol, upper middle. Large and bold so it reads at thumbnail size.
+  drawSuitSymbol(ctx, card.suit, x + w / 2, y + h * 0.26, Math.min(w, h) * 0.36);
   // Suit label at the bottom.
   ctx.fillStyle = ink;
-  ctx.font = 'bold ' + Math.round(h * 0.09) + 'px Georgia, serif';
+  ctx.font = 'bold ' + Math.round(h * 0.11) + 'px Georgia, serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(s.label, x + w / 2, y + h - 10);
@@ -152,11 +223,22 @@ export function renderCardBack(ctx, x, y, w, h) {
   ctx.strokeStyle = 'rgba(212, 168, 75, 0.6)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = PALETTE.gold;
-  ctx.font = 'bold ' + Math.round(h * 0.22) + 'px Georgia, serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('R', x + w / 2, y + h / 2);
+  // Ritual sigil: a gold ring with the three suit marks inside, so the back
+  // reads as this game's seal instead of a bare letter.
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const r = Math.min(w, h) * 0.3;
+  ctx.save();
+  ctx.strokeStyle = PALETTE.gold;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  const s = Math.min(w, h) * 0.16;
+  drawSuitSymbol(ctx, 'blood', cx, cy - r * 0.52, s);
+  drawSuitSymbol(ctx, 'bone', cx - r * 0.52, cy + r * 0.42, s);
+  drawSuitSymbol(ctx, 'shadow', cx + r * 0.52, cy + r * 0.42, s);
+  ctx.restore();
 }
 
 export function renderHand(ctx, hand, selected, table) {
@@ -171,8 +253,19 @@ export function renderHand(ctx, hand, selected, table) {
 
 export function renderTable(ctx, game, t) {
   const L = LAYOUT;
-  // Felt background with a vignette border.
+  // Layered felt: flat base, a warm central glow, and a dark vignette so the
+  // middle of the table has depth instead of one flat dark field.
   ctx.fillStyle = PALETTE.felt;
+  ctx.fillRect(0, 0, L.width, L.height);
+  const glow = ctx.createRadialGradient(640, 340, 60, 640, 340, 560);
+  glow.addColorStop(0, 'rgba(255, 170, 51, 0.07)');
+  glow.addColorStop(1, 'rgba(255, 170, 51, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, L.width, L.height);
+  const vig = ctx.createRadialGradient(640, 360, 240, 640, 360, 720);
+  vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  vig.addColorStop(1, 'rgba(0, 0, 0, 0.38)');
+  ctx.fillStyle = vig;
   ctx.fillRect(0, 0, L.width, L.height);
   ctx.strokeStyle = PALETTE.border;
   ctx.lineWidth = 10;
@@ -180,6 +273,9 @@ export function renderTable(ctx, game, t) {
   ctx.strokeStyle = 'rgba(212, 168, 75, 0.25)';
   ctx.lineWidth = 2;
   ctx.strokeRect(16, 16, L.width - 32, L.height - 32);
+
+  drawAltar(ctx);
+  drawRitualFrames(ctx);
 
   // Deck pile.
   renderCardBack(ctx, L.deck.x, L.deck.y, L.deck.w, L.deck.h);
@@ -190,9 +286,10 @@ export function renderTable(ctx, game, t) {
 
   // Discard pile.
   const top = game.deck.discardPile[game.deck.discardPile.length - 1];
-  if (top) {
+  // A card still flying to the discard is drawn by the flying proxy instead.
+  if (top && !top._flying) {
     renderCard(ctx, top, L.discard.x, L.discard.y, L.discard.w, L.discard.h);
-  } else {
+  } else if (!top) {
     roundRect(ctx, L.discard.x, L.discard.y, L.discard.w, L.discard.h, 8);
     ctx.strokeStyle = 'rgba(245, 240, 230, 0.35)';
     ctx.lineWidth = 2;

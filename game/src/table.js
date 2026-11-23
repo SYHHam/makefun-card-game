@@ -20,7 +20,7 @@ export const LAYOUT = {
   progress: { x: 440, y: 650 },
   ritualButton: { x: 780, y: 640, w: 190, h: 44 },
   spellButton: { x: 990, y: 640, w: 190, h: 44 },
-  hook: { x: 640, y: 702 },
+  hook: { x: 640, y: 690 },
   turnLabel: { x: 640, y: 200 },
 };
 
